@@ -32,9 +32,7 @@ export const login = async (req: Request, res: Response) => {
       : await User.findOne({ where: { username: body.username } });
 
     if (user === null) {
-      return res
-        .status(401)
-        .send(`${body.email ? "Email" : "Username"} does not exist`);
+      return res.status(401).send(`${body.email ? "Email" : "Username"} does not exist`);
     }
     if (!user.isValidPassword(body.password)) {
       return res.status(401).send("Wrong password");
@@ -93,9 +91,7 @@ export const validateToken = async (req: Request, res: Response) => {
     });
     const payload = ticket.getPayload();
 
-    const response = await axios.get(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${token}`
-    );
+    const response = await axios.get(`https://oauth2.googleapis.com/tokeninfo?id_token=${token}`);
 
     console.log("response.data", response.data);
 
@@ -109,7 +105,7 @@ export const validateToken = async (req: Request, res: Response) => {
 
     const { password, ...restUser } = user;
 
-    return res.status(200).json({ user: restUser, token });
+    return res.status(200).json({ user: { ...payload, id: restUser.id }, token });
   } catch (error: any) {
     return res.status(401).send();
   }
@@ -131,32 +127,24 @@ export const validateCognitoToken = async (req: Request, res: Response) => {
 
   const { id_token, access_token } = req.query;
 
-  if (typeof id_token !== "string")
-    return res.status(404).send("Tenes que mandar el token id valido");
+  if (typeof id_token !== "string") return res.status(404).send("Tenes que mandar el token id valido");
 
   const idTokenDecoded = jwt.decode(id_token, { complete: true });
 
-  if (!idTokenDecoded)
-    return res.status(404).send("Tenes que mandar el token id valido");
+  if (!idTokenDecoded) return res.status(404).send("Tenes que mandar el token id valido");
 
   const { header, payload } = idTokenDecoded;
 
   const idTokenJWK = jwks.keys.find((jwk) => jwk.kid === header.kid);
 
-  if (!idTokenJWK)
-    return res.status(404).send("Tenes que mandar el token id valido");
+  if (!idTokenJWK) return res.status(404).send("Tenes que mandar el token id valido");
 
   const pem = jwkToPem(idTokenJWK as any);
 
-  jwt.verify(
-    id_token,
-    pem,
-    { algorithms: ["RS256"] },
-    function (err, decodedToken) {
-      if (err) console.log("error", err);
-      console.log("decodedToken", decodedToken);
-    }
-  );
+  jwt.verify(id_token, pem, { algorithms: ["RS256"] }, function (err, decodedToken) {
+    if (err) console.log("error", err);
+    console.log("decodedToken", decodedToken);
+  });
   // console.log("idTokenDecoded.header", idTokenDecoded.header);
   // console.log('req', req.query)
   // console.log('typeof jwk', typeof jwk)
@@ -181,21 +169,15 @@ export async function loginWithGoogle(req: Request, res: Response) {
       // Or, if multiple clients access the backend:
       //[CLIENT_ID_1, CLIENT_ID_2, CLIENT_ID_3]
     });
+
     const payload = ticket.getPayload();
     //   const userid = payload["sub"];
 
     if (!payload) return res.status(401).send();
 
-    const domain = payload["hd"];
-    if (domain !== "inventa.shop")
-      return res
-        .status(403)
-        .send("You must remain in the inventa.shop to access ");
-    console.log("payload", payload);
-
     const user = await User.findOneBy({ email: payload.email });
 
-    if (user) return res.status(200).json({ user, token: req.body.token });
+    if (user) return res.status(200).json({ user: { id: user.id, ...payload }, token: req.body.token });
 
     const newUser = new User();
 
@@ -208,9 +190,10 @@ export async function loginWithGoogle(req: Request, res: Response) {
     // Delete password atributte before send success created response
     const { password, ...restCreatedUser } = createdUser;
 
-    return res
-      .status(201)
-      .json({ user: restCreatedUser, token: req.body.token });
+    return res.status(201).json({
+      user: { id: restCreatedUser.id, ...payload },
+      token: req.body.token,
+    });
   } catch (error) {
     if (error instanceof Error) {
       console.log("error", error);
